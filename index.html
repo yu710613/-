@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ER Nursing Roster System</title>
+    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+    <style>
+        :root {
+            --primary: #0056b3;
+            --sidebar-bg: #1e293b;
+            --sidebar-hover: #334155;
+            --bg: #f1f5f9;
+            --card: #ffffff;
+            --border: #e2e8f0;
+            --text-main: #334155;
+            --text-light: #94a3b8;
+            --danger: #ef4444;
+            --success: #22c55e;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+        
+        body { display: flex; height: 100vh; background-color: var(--bg); color: var(--text-main); }
+
+        /* 側邊欄 */
+        .sidebar {
+            width: 250px; background: var(--sidebar-bg); color: white; display: flex; flex-direction: column;
+        }
+        .logo { padding: 20px; font-size: 1.2rem; font-weight: bold; border-bottom: 1px solid var(--sidebar-hover); letter-spacing: 1px; }
+        .nav-item { padding: 15px 20px; cursor: pointer; transition: 0.2s; border-left: 4px solid transparent; }
+        .nav-item:hover { background: var(--sidebar-hover); }
+        .nav-item.active { background: var(--sidebar-hover); border-left-color: #38bdf8; font-weight: bold; }
+
+        /* 主內容區 */
+        .main-content { flex: 1; overflow-y: auto; padding: 30px; }
+        .page { display: none; }
+        .page.active { display: block; }
+
+        /* 卡片與表單 */
+        .card { background: var(--card); border-radius: 8px; padding: 25px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); margin-bottom: 20px; }
+        .card-title { font-size: 1.2rem; margin-bottom: 20px; color: var(--primary); border-bottom: 2px solid var(--border); padding-bottom: 10px; }
+        
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; margin-bottom: 5px; font-weight: bold; font-size: 0.9rem; }
+        .form-group input, .form-group select { width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 5px; }
+        
+        .row { display: flex; gap: 15px; }
+        .col { flex: 1; }
+
+        button { background: var(--primary); color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-weight: bold; transition: 0.2s; }
+        button:hover { opacity: 0.9; }
+        button.danger { background: var(--danger); }
+        button.success { background: var(--success); }
+
+        /* 表格設定 */
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 0.9rem; }
+        th, td { border: 1px solid var(--border); padding: 10px; text-align: center; }
+        th { background: #f8fafc; font-weight: bold; }
+        .tag { padding: 3px 8px; border-radius: 12px; font-size: 0.8rem; background: #e2e8f0; }
+        .tag.leader { background: #fee2e2; color: #991b1b; }
+        .tag.member { background: #e0f2fe; color: #075985; }
+
+        /* 班表 Grid */
+        .roster-container { overflow-x: auto; }
+        .roster-table th { min-width: 40px; }
+        .roster-table td { padding: 5px; }
+        .shift-input { width: 35px; text-align: center; border: 1px solid #ccc; text-transform: uppercase; border-radius: 3px; font-weight: bold;}
+        .shift-D { color: #0284c7; }
+        .shift-E { color: #d97706; }
+        .shift-N { color: #7e22ce; }
+        .shift-OFF { color: #94a3b8; }
+        .shift-LEAVE { background: #fef08a; color: #854d0e; }
+
+        .rules-text { font-size: 0.9rem; color: #64748b; line-height: 1.6; background: #f8fafc; padding: 15px; border-radius: 5px; }
+    </style>
+</head>
+<body>
+
+<div class="sidebar">
+    <div class="logo">⚕️ ER Roster Sys</div>
+    <div class="nav-item active" onclick="switchPage('staff')">1. 人員建檔</div>
+    <div class="nav-item" onclick="switchPage('rules')">2. 規則與需求設定</div>
+    <div class="nav-item" onclick="switchPage('leaves')">3. 預假登錄</div>
+    <div class="nav-item" onclick="switchPage('schedule')">4. 班表產生與匯出</div>
+</div>
+
+<div class="main-content">
+    
+    <div id="page-staff" class="page active">
+        <div class="card">
+            <div class="card-title">護理師名單管理</div>
+            <div class="row">
+                <div class="col form-group">
+                    <label>姓名</label>
+                    <input type="text" id="staffName" placeholder="輸入姓名">
+                </div>
+                <div class="col form-group">
+                    <label>職級 (Role)</label>
+                    <select id="staffRole">
+                        <option value="Leader">Leader</option>
+                        <option value="Member">Member</option>
+                    </select>
+                </div>
+                <div class="col form-group" style="display:flex; align-items:flex-end;">
+                    <button onclick="addStaff()">+ 新增人員</button>
+                </div>
+            </div>
+            
+            <table id="staffTable">
+                <thead><tr><th>姓名</th><th>職級</th><th>操作</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+
+    <div id="page-rules" class="page">
+        <div class="card">
+            <div class="card-title">排班規則說明與人數需求</div>
+            <div class="rules-text">
+                <strong>系統內建硬性規則 (Hard Rules)：</strong><br>
+                1. 預假：公假、喪假優先排入，不可被覆蓋。<br>
+                2. 班別轉換限制：不可 N 接 D、不可 N 接 E、不可 E 接 D，中間必須經過一天 OFF (或休假)。<br>
+                3. 連續上班限制：最多連續排班 5 天，第 6 天強制 OFF。<br>
+                4. 公假視同 D 班 (白班) 上班一日。<br><br>
+                <em>* 由於全自動排班屬於高度複雜運算，本系統提供「初步草稿產生」，請排班者務必人工微調。</em>
+            </div>
+            <br>
+            <div class="row">
+                <div class="col form-group"><label>每日 D 班 (白班) 需求人數</label><input type="number" id="reqD" value="4"></div>
+                <div class="col form-group"><label>每日 E 班 (小夜) 需求人數</label><input type="number" id="reqE" value="3"></div>
+                <div class="col form-group"><label>每日 N 班 (大夜) 需求人數</label><input type="number" id="reqN" value="2"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="page-leaves" class="page">
+        <div class="card">
+            <div class="card-title">預假登錄</div>
+            <div class="row">
+                <div class="col form-group">
+                    <label>選擇人員</label>
+                    <select id="leaveStaff"></select>
+                </div>
+                <div class="col form-group">
+                    <label>日期 (1~30)</label>
+                    <input type="number" id="leaveDate" min="1" max="30" placeholder="例如: 15">
+                </div>
+                <div class="col form-group">
+                    <label>假別</label>
+                    <select id="leaveType">
+                        <option value="公假">公假</option>
+                        <option value="喪假">喪假</option>
+                        <option value="休假">預休 (OFF)</option>
+                    </select>
+                </div>
+                <div class="col form-group" style="display:flex; align-items:flex-end;">
+                    <button onclick="addLeave()">+ 新增預假</button>
+                </div>
+            </div>
+
+            <table id="leaveTable">
+                <thead><tr><th>姓名</th><th>日期</th><th>假別</th><th>操作</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+
+    <div id="page-schedule" class="page">
+        <div class="card">
+            <div class="card-title" style="display:flex; justify-content:space-between; align-items:center;">
+                <span>當月班表 (Demo 30天)</span>
+                <div>
+                    <button onclick="generateRoster()" class="success">✨ 初步自動排班</button>
+                    <button onclick="exportExcel()" style="background:#10b981;">📥 匯出 Excel</button>
+                </div>
+            </div>
+            <div class="roster-container">
+                <table class="roster-table" id="rosterTable">
+                    </table>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+    // 狀態資料
+    let staffList = [
+        { id: 1, name: "王小明", role: "Leader" },
+        { id: 2, name: "陳大文", role: "Leader" },
+        { id: 3, name: "李小美", role: "Member" },
+        { id: 4, name: "林阿姨", role: "Member" },
+        { id: 5, name: "張護理", role: "Member" },
+        { id: 6, name: "黃急診", role: "Member" },
+        { id: 7, name: "吳熱血", role: "Member" }
+    ];
+    let leaveList = []; // { staffName, date, type }
+    const daysInMonth = 30;
+
+    // 頁面切換
+    function switchPage(pageId) {
+        document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+        document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+        document.getElementById(`page-${pageId}`).classList.add('active');
+        event.currentTarget.classList.add('active');
+
+        if(pageId === 'leaves') updateLeaveStaffDropdown();
+        if(pageId === 'schedule') renderEmptyRoster();
+    }
+
+    // --- 人員管理 ---
+    function renderStaff() {
+        const tbody = document.querySelector('#staffTable tbody');
+        tbody.innerHTML = '';
+        staffList.forEach((s, idx) => {
+            const roleClass = s.role === 'Leader' ? 'leader' : 'member';
+            tbody.innerHTML += `
+                <tr>
+                    <td>${s.name}</td>
+                    <td><span class="tag ${roleClass}">${s.role}</span></td>
+                    <td><button class="danger" onclick="removeStaff(${idx})" style="padding:5px 10px;">刪除</button></td>
+                </tr>
+            `;
+        });
+    }
+
+    function addStaff() {
+        const name = document.getElementById('staffName').value.trim();
+        const role = document.getElementById('staffRole').value;
+        if (!name) return alert("請輸入姓名");
+        staffList.push({ id: Date.now(), name, role });
+        document.getElementById('staffName').value = '';
+        renderStaff();
+    }
+
+    function removeStaff(index) {
+        staffList.splice(index, 1);
+        renderStaff();
+    }
+
+    // --- 預假管理 ---
+    function updateLeaveStaffDropdown() {
+        const select = document.getElementById('leaveStaff');
+        select.innerHTML = staffList.map(s => `<option value="${s.name}">${s.name}</option>`).join('');
+    }
+
+    function renderLeaves() {
+        const tbody = document.querySelector('#leaveTable tbody');
+        tbody.innerHTML = '';
+        // 排序：依姓名再依日期
+        leaveList.sort((a,b) => a.date - b.date).forEach((l, idx) => {
+            tbody.innerHTML += `
+                <tr>
+                    <td>${l.staffName}</td>
+                    <td>${l.date} 日</td>
+                    <td>${l.type}</td>
+                    <td><button class="danger" onclick="removeLeave(${idx})" style="padding:5px 10px;">刪除</button></td>
+                </tr>
+            `;
+        });
+    }
+
+    function addLeave() {
+        const name = document.getElementById('leaveStaff').value;
+        const date = parseInt(document.getElementById('leaveDate').value);
+        const type = document.getElementById('leaveType').value;
+        if (!date || date < 1 || date > 30) return alert("請輸入正確日期 (1-30)");
+        
+        // 檢查是否重複
+        const exists = leaveList.find(l => l.staffName === name && l.date === date);
+        if(exists) return alert("該員當日已有預假紀錄");
+
+        leaveList.push({ staffName: name, date, type });
+        renderLeaves();
+    }
+
+    function removeLeave(index) {
+        leaveList.splice(index, 1);
+        renderLeaves();
+    }
+
+    // --- 班表邏輯 ---
+    function renderEmptyRoster() {
+        const table = document.getElementById('rosterTable');
+        let headerHtml = '<thead><tr><th>姓名</th><th>職級</th>';
+        for(let i=1; i<=daysInMonth; i++) headerHtml += `<th>${i}</th>`;
+        headerHtml += '</tr></thead><tbody>';
+
+        let bodyHtml = '';
+        staffList.forEach(s => {
+            bodyHtml += `<tr>
+                <td style="font-weight:bold;">${s.name}</td>
+                <td><span class="tag ${s.role === 'Leader' ? 'leader' : 'member'}">${s.role}</span></td>`;
+            for(let i=1; i<=daysInMonth; i++) {
+                // 檢查是否有預假
+                const leave = leaveList.find(l => l.staffName === s.name && l.date === i);
+                let val = '';
+                let extraClass = '';
+                if(leave) {
+                    if(leave.type === '公假') val = '公';
+                    else if(leave.type === '喪假') val = '喪';
+                    else val = 'OFF';
+                    extraClass = 'shift-LEAVE';
+                }
+                bodyHtml += `<td><input type="text" class="shift-input ${extraClass}" id="cell-${s.name}-${i}" value="${val}" autocomplete="off" onchange="updateColor(this)"></td>`;
+            }
+            bodyHtml += '</tr>';
+        });
+        bodyHtml += '</tbody>';
+        table.innerHTML = headerHtml + bodyHtml;
+        
+        // 初始化顏色
+        document.querySelectorAll('.shift-input').forEach(updateColor);
+    }
+
+    function updateColor(input) {
+        input.classList.remove('shift-D', 'shift-E', 'shift-N', 'shift-OFF', 'shift-LEAVE');
+        const val = input.value.toUpperCase();
+        if(val === 'D') input.classList.add('shift-D');
+        if(val === 'E') input.classList.add('shift-E');
+        if(val === 'N') input.classList.add('shift-N');
+        if(val === 'OFF') input.classList.add('shift-OFF');
+        if(val === '公' || val === '喪') input.classList.add('shift-LEAVE');
+        input.value = val;
+    }
+
+    // 基礎貪婪演算法排班 (簡化版)
+    function generateRoster() {
+        if(staffList.length === 0) return alert("請先設定人員");
+        
+        // 取得需求
+        const reqD = parseInt(document.getElementById('reqD').value) || 0;
+        const reqE = parseInt(document.getElementById('reqE').value) || 0;
+        const reqN = parseInt(document.getElementById('reqN').value) || 0;
+
+        renderEmptyRoster(); // 重置表格保留假別
+
+        // 建立紀錄每個護理師狀態的物件
+        let state = {};
+        staffList.forEach(s => {
+            state[s.name] = { consecWork: 0, yesterdayShift: '' };
+        });
+
+        // 每天依序排
+        for(let d=1; d<=daysInMonth; d++) {
+            let needed = { 'D': reqD, 'E': reqE, 'N': reqN };
+            
+            // 步驟1：先檢查當天有公假的人，算作D班
+            staffList.forEach(s => {
+                const cell = document.getElementById(`cell-${s.name}-${d}`);
+                if(cell.value === '公') needed['D']--;
+            });
+
+            // 隨機打亂人員順序以求平均分配
+            let shuffledStaff = [...staffList].sort(() => 0.5 - Math.random());
+
+            // 步驟2：排班 (優先排 N -> E -> D 以符合休息邏輯)
+            ['N', 'E', 'D'].forEach(shiftType => {
+                let assigned = 0;
+                for(let i=0; i<shuffledStaff.length && assigned < needed[shiftType]; i++) {
+                    let staff = shuffledStaff[i];
+                    const cell = document.getElementById(`cell-${staff.name}-${d}`);
+                    
+                    // 如果該格已經有值(預假)，跳過
+                    if(cell.value !== '') continue;
+
+                    // 規則檢查
+                    let st = state[staff.name];
+                    let canAssign = true;
+
+                    // 規則: 連續上班不超過5天
+                    if(st.consecWork >= 5) canAssign = false;
+                    
+                    // 規則: 擋班
+                    if(st.yesterdayShift === 'N' && (shiftType === 'D' || shiftType === 'E')) canAssign = false;
+                    if(st.yesterdayShift === 'E' && shiftType === 'D') canAssign = false;
+
+                    if(canAssign) {
+                        cell.value = shiftType;
+                        updateColor(cell);
+                        st.yesterdayShift = shiftType;
+                        st.consecWork++;
+                        assigned++;
+                    }
+                }
+            });
+
+            // 步驟3：未排到班的人，自動補 OFF，並重置連續上班天數
+            staffList.forEach(s => {
+                const cell = document.getElementById(`cell-${s.name}-${d}`);
+                if(cell.value === '') {
+                    cell.value = 'OFF';
+                    updateColor(cell);
+                    state[s.name].yesterdayShift = 'OFF';
+                    state[s.name].consecWork = 0;
+                } else if (cell.value === '公' || cell.value === '喪') {
+                    // 預假更新狀態
+                    state[s.name].yesterdayShift = cell.value;
+                    state[s.name].consecWork = 0; 
+                }
+            });
+        }
+        alert("初步排班完成！受限於人員數量與硬性規則，未滿足需求的班別已留為 OFF，請手動進行微調。");
+    }
+
+    // --- 匯出 Excel ---
+    function exportExcel() {
+        const table = document.getElementById("rosterTable");
+        // 將 HTML Table 轉成 SheetJS 的 WorkBook
+        const wb = XLSX.utils.table_to_book(table, {sheet: "Roster"});
+        // 下載檔案
+        XLSX.writeFile(wb, "急診班表.xlsx");
+    }
+
+    // 初始化
+    renderStaff();
+</script>
+</body>
+</html>
