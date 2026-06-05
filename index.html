@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ER Roster Pro v3.3 (Summary & Logic Update)</title>
+    <title>ER Roster Pro v3.5 (Look-ahead Rules)</title>
     <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
     <style>
         :root {
@@ -58,7 +58,6 @@
         .shift-D { color: #0284c7; } .shift-E { color: #d97706; } .shift-N { color: #7e22ce; }
         .shift-OFF { color: #94a3b8; } .shift-LEAVE { background: #fef08a; color: #854d0e; }
 
-        /* 新增：統計區塊樣式 */
         .summary-col { background-color: #f8fafc; font-weight: bold; color: #334155; min-width: 45px; }
         .summary-row td { background-color: #e2e8f0; font-weight: bold; color: #0f172a; }
         .summary-row.daily-D td:first-child { color: #0284c7; }
@@ -72,7 +71,7 @@
 <body>
 
 <div class="sidebar">
-    <div class="logo">⚕️ ER Roster Sys v3.3</div>
+    <div class="logo">⚕️ ER Roster Sys v3.5</div>
     <div class="nav-item active" onclick="switchPage('staff', this)">1. 護理師建檔</div>
     <div class="nav-item" onclick="switchPage('rules', this)">2. 月份與需求設定</div>
     <div class="nav-item" onclick="switchPage('leaves', this)">3. 預假登錄</div>
@@ -81,6 +80,7 @@
 
 <div class="main-content">
     
+    <!-- 頁面 1: 人員建檔 -->
     <div id="page-staff" class="page active">
         <div class="card">
             <div class="card-title">新增 / 編輯護理師資料</div>
@@ -104,6 +104,7 @@
         </div>
     </div>
 
+    <!-- 頁面 2: 規則設定 -->
     <div id="page-rules" class="page">
         <div class="card">
             <div class="card-title">排班月份設定</div>
@@ -119,9 +120,10 @@
             <div class="rules-text">
                 <strong>系統排班邏輯：</strong><br>
                 1. <strong>假別優先：</strong> 已登錄之預假絕對保留。<br>
-                2. <strong>公假規則：</strong> 公假計算個人連上天數，但<strong>不計入當日單位的白班(D)人力</strong>。<br>
-                3. <strong>防呆機制：</strong> 不可連上超過5天；不可 N->D, N->E, E->D。<br>
+                2. <strong>公假規則：</strong> 公假視同白班，不計入當日單位的白班(D)人力。<br>
+                3. <strong>防呆機制：</strong> 不可連上超過5天；不可 N->D, N->E, E->D；<strong>不可 N->公, E->公</strong>。<br>
                 4. <strong>Leader 保障：</strong> 每天各班別優先挑選至少 1 名 Leader。<br>
+                5. <strong>避免碎班：</strong> 演算法會盡力避免「上一天休一天」的情形，盡量安排連上或連休。
             </div>
             <div class="form-grid" style="margin-top: 15px;">
                 <div class="form-group"><label>D 班 每日需求人數</label><input type="number" id="reqD" value="4"></div>
@@ -131,6 +133,7 @@
         </div>
     </div>
 
+    <!-- 頁面 3: 預假設定 -->
     <div id="page-leaves" class="page">
         <div class="card">
             <div class="card-title">預假登錄</div>
@@ -147,6 +150,7 @@
         </div>
     </div>
 
+    <!-- 頁面 4: 班表產生 -->
     <div id="page-schedule" class="page">
         <div class="card">
             <div class="card-title" style="display:flex; justify-content:space-between; align-items:center;">
@@ -265,16 +269,13 @@
 
     function removeLeave(index) { leaveList.splice(index, 1); renderLeaves(); }
 
-    // --- 表格產生與統計區塊 ---
     function renderEmptyRoster() {
         const table = document.getElementById('rosterTable');
         
-        // Header 加入個人統計欄位
         let headerHtml = '<thead><tr><th>姓名</th><th>班別</th>';
         for(let i=1; i<=daysInMonth; i++) headerHtml += `<th>${i}</th>`;
         headerHtml += '<th class="summary-col">D</th><th class="summary-col">E</th><th class="summary-col">N</th><th class="summary-col">OFF</th><th class="summary-col">假</th></tr></thead><tbody>';
 
-        // Body 加入個人打卡輸入框與統計
         let bodyHtml = '';
         staffList.forEach(s => {
             const roleColor = s.role === 'Leader' ? 'red' : 'blue';
@@ -286,11 +287,9 @@
                 const leave = leaveList.find(l => l.staffName === s.name && l.date === i);
                 let val = '';
                 if(leave) val = leave.type === '公假' ? '公' : (leave.type === '喪假' ? '喪' : 'OFF');
-                // 注意這裡的 onchange: 當手動修改時，會呼叫 updateColor 並重新計算總表
                 bodyHtml += `<td><input type="text" class="shift-input" id="cell-${s.name}-${i}" value="${val}" autocomplete="off" onchange="updateColor(this); updateSummaries();"></td>`;
             }
             
-            // 每個人的總計儲存格
             bodyHtml += `
                 <td class="summary-col" id="sum-D-${s.name}">0</td>
                 <td class="summary-col" id="sum-E-${s.name}">0</td>
@@ -301,21 +300,17 @@
         });
         bodyHtml += '</tbody>';
 
-        // Footer 加入每日總計列
         let footerHtml = '<tfoot>';
         ['D', 'E', 'N'].forEach(shift => {
             footerHtml += `<tr class="summary-row daily-${shift}"><td colspan="2">${shift}班人力</td>`;
             for(let i=1; i<=daysInMonth; i++) {
                 footerHtml += `<td id="daily-${shift}-${i}">0</td>`;
             }
-            // 補齊最後面五格統計欄位的空白
             footerHtml += `<td colspan="5"></td></tr>`;
         });
         footerHtml += '</tfoot>';
 
         table.innerHTML = headerHtml + bodyHtml + footerHtml;
-        
-        // 初始畫面上色與統計
         document.querySelectorAll('.shift-input').forEach(updateColor);
         updateSummaries();
     }
@@ -331,11 +326,9 @@
         input.value = val;
     }
 
-    // --- 計算所有統計數字 ---
     function updateSummaries() {
         if(staffList.length === 0) return;
 
-        // 1. 計算每位護理師的當月班別總和 (橫向)
         staffList.forEach(s => {
             let counts = { D: 0, E: 0, N: 0, OFF: 0, LEAVE: 0 };
             for(let d = 1; d <= daysInMonth; d++) {
@@ -353,7 +346,6 @@
             document.getElementById(`sum-LEAVE-${s.name}`).innerText = counts.LEAVE;
         });
 
-        // 2. 計算每天的單日 D/E/N 人力總和 (直向)
         for(let d = 1; d <= daysInMonth; d++) {
             let counts = { D: 0, E: 0, N: 0 };
             staffList.forEach(s => {
@@ -361,13 +353,11 @@
                 if(val === 'D') counts.D++;
                 else if(val === 'E') counts.E++;
                 else if(val === 'N') counts.N++;
-                // 這裡沒有列入 '公'，因為公假人員不在單位，不能算進實質人力
             });
             document.getElementById(`daily-D-${d}`).innerText = counts.D;
             document.getElementById(`daily-E-${d}`).innerText = counts.E;
             document.getElementById(`daily-N-${d}`).innerText = counts.N;
             
-            // (選填) 若每日人數低於需求，可讓字體變紅提醒
             const reqD = parseInt(document.getElementById('reqD').value) || 0;
             const reqE = parseInt(document.getElementById('reqE').value) || 0;
             const reqN = parseInt(document.getElementById('reqN').value) || 0;
@@ -377,7 +367,6 @@
         }
     }
 
-    // --- 核心大腦: 排班演算法 ---
     function generateRoster() {
         if(staffList.length === 0) return alert("請先建檔護理人員");
         renderEmptyRoster();
@@ -390,24 +379,32 @@
 
         let state = {};
         staffList.forEach(s => {
-            state[s.name] = { data: s, consecWork: s.lastConsec, yesterdayShift: s.lastShift, targetDaysCount: 0, offCount: 0, targetNeed: s.isFixed ? 18 : 15 };
+            state[s.name] = { 
+                data: s, 
+                consecWork: s.lastConsec, 
+                yesterdayShift: s.lastShift, 
+                consecOff: s.lastShift === 'OFF' ? 1 : 0, 
+                targetDaysCount: 0, 
+                offCount: 0, 
+                targetNeed: s.isFixed ? 18 : 15 
+            };
         });
 
         for(let d=1; d<=daysInMonth; d++) {
             let dailyReq = { 'D': req['D'], 'E': req['E'], 'N': req['N'] };
             let dailyAssigned = { 'D': [], 'E': [], 'N': [] };
 
-            // 修正重點：公假依然增加個人連上天數，但不去扣除 dailyReq['D'] (單位依然需要補齊D班人力)
             staffList.forEach(s => {
                 const cell = document.getElementById(`cell-${s.name}-${d}`);
                 if(cell.value === '公') { 
-                    // dailyReq['D']--;  <-- 此行已刪除，因為公假不會提供單位實質人力
                     state[s.name].yesterdayShift = 'D'; 
                     state[s.name].consecWork++; 
+                    state[s.name].consecOff = 0; 
                 }
                 else if(cell.value === '喪' || cell.value === 'OFF') { 
                     state[s.name].yesterdayShift = 'OFF'; 
                     state[s.name].consecWork = 0; 
+                    state[s.name].consecOff++; 
                     state[s.name].offCount++; 
                 }
             });
@@ -417,15 +414,31 @@
                 staffList.forEach(s => {
                     if (document.getElementById(`cell-${s.name}-${d}`).value !== '') return;
                     let st = state[s.name];
+                    
+                    // --- 向後防呆 (看昨天) ---
                     if (st.consecWork >= 5) return;
                     if (st.yesterdayShift === 'N' && (shiftType === 'D' || shiftType === 'E')) return;
                     if (st.yesterdayShift === 'E' && shiftType === 'D') return;
                     
+                    // --- 向前防呆 (看明天) ---
+                    // 偷看明天的格子是否已經被預約了公假
+                    let tomorrowShift = '';
+                    if (d < daysInMonth) {
+                        tomorrowShift = document.getElementById(`cell-${s.name}-${d+1}`).value;
+                    }
+                    if (shiftType === 'N' && tomorrowShift === '公') return; // 不可 N 接公
+                    if (shiftType === 'E' && tomorrowShift === '公') return; // 不可 E 接公
+                    
                     let score = 0;
                     if (s.targetShift === shiftType) score += 50; 
                     else if (st.yesterdayShift === shiftType && st.yesterdayShift !== 'OFF') score += 20;
+                    
                     if (s.targetShift === shiftType && st.targetDaysCount < st.targetNeed) score += 30; 
                     score -= (st.targetDaysCount * 2);
+
+                    if (st.consecWork === 1) score += 40;
+                    if (st.yesterdayShift === 'OFF' && st.consecOff === 1) score -= 40;
+
                     candidates.push({ staff: s, score: score });
                 });
 
@@ -445,8 +458,11 @@
                     const cell = document.getElementById(`cell-${chosen.name}-${d}`);
                     cell.value = shiftType;
                     updateColor(cell);
+                    
                     state[chosen.name].yesterdayShift = shiftType;
                     state[chosen.name].consecWork++;
+                    state[chosen.name].consecOff = 0; 
+                    
                     if(chosen.targetShift === shiftType) state[chosen.name].targetDaysCount++;
                     dailyAssigned[shiftType].push(chosen.name);
                     dailyReq[shiftType]--;
@@ -460,15 +476,14 @@
                     updateColor(cell);
                     state[s.name].yesterdayShift = 'OFF';
                     state[s.name].consecWork = 0;
+                    state[s.name].consecOff++; 
                     state[s.name].offCount++;
                 }
             });
         }
         
-        // 排班完成後，全面更新一次統計數字
         updateSummaries();
-        
-        alert("初版排班已產生！\n請直接在表格內修改班別，統計數字會即時自動更新喔！");
+        alert("初版排班已產生！\n已套用「防碎班」及「不可N/E接公」等防呆規則。");
     }
 
     function exportExcel() {
@@ -476,7 +491,6 @@
         XLSX.writeFile(wb, `${currentYear}年${currentMonth}月-急診班表.xlsx`);
     }
 
-    // 執行初始載入
     initDate();
     renderStaff();
 </script>
