@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ER Roster Pro v4.4 (Auto Save)</title>
+    <title>ER Roster Pro v4.6 (Safe Storage Mode)</title>
     <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
     <style>
         :root {
@@ -70,8 +70,10 @@
 
         .rules-text { font-size: 0.9rem; color: #64748b; line-height: 1.6; background: #f8fafc; padding: 15px; border-radius: 5px; }
         .month-settings { background: #e0f2fe; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #bae6fd; }
+
         .quick-add-bar { display: flex; gap: 10px; align-items: center; background: #f1f5f9; padding: 10px; border-radius: 8px; margin-bottom: 15px; }
         .quick-add-bar input, .quick-add-bar select { padding: 6px; border: 1px solid #ccc; border-radius: 4px; }
+        
         .prev-month-info { font-size: 0.75rem; color: #64748b; background: #f1f5f9; padding: 2px 5px; border-radius: 4px; white-space: nowrap; }
 
         /* 行事曆專用樣式 */
@@ -100,7 +102,7 @@
 <body>
 
 <div class="sidebar">
-    <div class="logo">⚕️ ER Roster Sys v4.4</div>
+    <div class="logo">⚕️ ER Roster Sys v4.6</div>
     <div class="nav-item active" onclick="switchPage('staff', this)">1. 護理師建檔</div>
     <div class="nav-item" onclick="switchPage('rules', this)">2. 月份與需求設定</div>
     <div class="nav-item" onclick="switchPage('leaves', this)">3. 預假行事曆</div>
@@ -112,8 +114,12 @@
     <div id="page-staff" class="page active">
         <div class="card">
             <div class="card-title">
-                <span>單位人員名單配置 <span style="font-size: 0.8rem; color: var(--success);">💾 已開啟自動記憶</span></span>
-                <button onclick="resetAllData()" class="danger" style="font-size: 0.8rem; padding: 5px 10px;">⚠️ 清除記憶 (恢復預設)</button>
+                <span>單位人員名單配置 <span id="saveStatusIndicator" style="font-size: 0.8rem; color: var(--success);">💾 已開啟自動記憶</span></span>
+                <div>
+                    <input type="file" id="importExcel" accept=".xlsx, .xls" style="display:none;" onchange="handleImportExcel(event)">
+                    <button onclick="document.getElementById('importExcel').click()" style="background:#8b5cf6; font-size: 0.8rem; padding: 5px 10px; margin-right: 10px;">📥 讀取上月班表</button>
+                    <button onclick="resetAllData()" class="danger" style="font-size: 0.8rem; padding: 5px 10px;">⚠️ 恢復預設</button>
+                </div>
             </div>
             <div class="quick-add-bar">
                 <strong>➕ 新增人員：</strong>
@@ -150,11 +156,11 @@
             </div>
             <div class="card-title">人力需求設定</div>
             <div class="rules-text">
-                <strong>系統排班邏輯 (v4.4 自動記憶版)：</strong><br>
-                1. <strong>資料儲存：</strong> 任何修改皆會自動儲存在您的瀏覽器中，關掉網頁資料也不會遺失。<br>
-                2. <strong>絕對固班：</strong> 修復跳班死結。系統極度排斥將人員排入非指定的班別。<br>
+                <strong>系統排班邏輯：</strong><br>
+                1. <strong>自動繼承：</strong> 可在第一頁上傳上個月的班表Excel，系統會自動算出每個人月底連上幾天。<br>
+                2. <strong>絕對固班：</strong> 系統極度排斥將人員排入非指定的班別。<br>
                 3. <strong>彈性補位：</strong> 若找不到該班別的 Leader，將優先讓該班別 Member 頂上，確保排班不中斷。<br>
-                4. <strong>公假規則：</strong> 公假等同出勤(不扣OFF)，但絕對不會計入 15/18 天的「指定班別」配額中。<br>
+                4. <strong>公假規則：</strong> 公假等同出勤，但不計入 15/18 天的「指定班別」配額中。<br>
             </div>
             <div class="form-grid" style="margin-top: 15px;">
                 <div class="form-group"><label>D 班 每日需求人數</label><input type="number" id="reqD" value="4"></div>
@@ -208,7 +214,6 @@
 </div>
 
 <script>
-    // 預設名單 (當LocalStorage沒有資料時使用)
     const defaultStaffList = [
         { id: 1, name: "歐玉雯", role: "Leader", targetShift: "D", isFixed: true, maxOff: 8, allowExtra: false, lastShift: "D", lastConsec: 2 },
         { id: 2, name: "徐懿慶", role: "Leader", targetShift: "D", isFixed: false, maxOff: 8, allowExtra: true, lastShift: "OFF", lastConsec: 0 },
@@ -236,34 +241,122 @@
     let currentMonth = new Date().getMonth() + 2; 
     let daysInMonth = 30;
 
-    // --- LocalStorage 核心功能 ---
+    // --- LocalStorage 核心功能 (加入防護罩 try-catch) ---
     function loadData() {
-        const savedStaff = localStorage.getItem('erRoster_staffList_v4');
-        const savedLeaves = localStorage.getItem('erRoster_leaveList_v4');
-        
-        if (savedStaff) {
-            staffList = JSON.parse(savedStaff);
-        } else {
-            // 深拷貝預設名單
+        try {
+            const savedStaff = localStorage.getItem('erRoster_staffList_v4');
+            const savedLeaves = localStorage.getItem('erRoster_leaveList_v4');
+            
+            // 檢查是否為空陣列 (避免使用者誤刪所有人後卡在空白)
+            if (savedStaff && savedStaff !== "[]") {
+                staffList = JSON.parse(savedStaff);
+            } else {
+                staffList = JSON.parse(JSON.stringify(defaultStaffList));
+            }
+            
+            if (savedLeaves) {
+                leaveList = JSON.parse(savedLeaves);
+            }
+            
+            document.getElementById('saveStatusIndicator').innerHTML = "💾 已開啟自動記憶";
+            document.getElementById('saveStatusIndicator').style.color = "var(--success)";
+        } catch (e) {
+            console.warn("本機記憶被阻擋或發生錯誤，將使用預設名單", e);
             staffList = JSON.parse(JSON.stringify(defaultStaffList));
-        }
-        
-        if (savedLeaves) {
-            leaveList = JSON.parse(savedLeaves);
+            leaveList = [];
+            document.getElementById('saveStatusIndicator').innerHTML = "⚠️ 無痕模式或阻擋記憶，不支援自動存檔";
+            document.getElementById('saveStatusIndicator').style.color = "var(--danger)";
         }
     }
 
     function saveData() {
-        localStorage.setItem('erRoster_staffList_v4', JSON.stringify(staffList));
-        localStorage.setItem('erRoster_leaveList_v4', JSON.stringify(leaveList));
+        try {
+            localStorage.setItem('erRoster_staffList_v4', JSON.stringify(staffList));
+            localStorage.setItem('erRoster_leaveList_v4', JSON.stringify(leaveList));
+        } catch (e) {
+            console.warn("儲存失敗，可能是無痕視窗限制");
+        }
     }
 
     function resetAllData() {
         if(confirm("⚠️ 警告：這將清除所有已記憶的護理師資料與預假紀錄，並恢復為初始預設名單。\n\n確定要繼續嗎？")) {
-            localStorage.removeItem('erRoster_staffList_v4');
-            localStorage.removeItem('erRoster_leaveList_v4');
-            location.reload(); // 重整網頁
+            try {
+                localStorage.removeItem('erRoster_staffList_v4');
+                localStorage.removeItem('erRoster_leaveList_v4');
+            } catch(e) {}
+            location.reload(); 
         }
+    }
+
+    // --- 讀取 Excel 分析上月底班別 ---
+    function handleImportExcel(e) {
+        const file = e.target.files[0];
+        if(!file) return;
+        const reader = new FileReader();
+        
+        reader.onload = function(evt) {
+            const data = new Uint8Array(evt.target.result);
+            const workbook = XLSX.read(data, {type: 'array'});
+            const firstSheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[firstSheetName];
+            const json = XLSX.utils.sheet_to_json(worksheet, {header: 1});
+
+            if(json.length < 2) {
+                alert("讀取失敗：Excel 格式不符");
+                return;
+            }
+
+            const headers = json[0];
+            let lastDayColIdx = -1;
+            
+            for(let i = 0; i < headers.length; i++) {
+                if(!isNaN(parseInt(headers[i]))) lastDayColIdx = i; 
+            }
+
+            if(lastDayColIdx === -1) {
+                alert("找不到日期欄位，請確定是本系統匯出的班表檔案！");
+                return;
+            }
+
+            let updatedCount = 0;
+            for(let r = 1; r < json.length; r++) {
+                const row = json[r];
+                if(!row || !row[0]) continue;
+                
+                const nameCell = String(row[0]); 
+                const staffItem = staffList.find(s => nameCell.includes(s.name));
+                
+                if(staffItem) {
+                    let lastShiftVal = row[lastDayColIdx] ? String(row[lastDayColIdx]).toUpperCase() : 'OFF';
+                    let mappedShift = 'OFF';
+                    
+                    if(['D','公'].includes(lastShiftVal)) mappedShift = 'D'; 
+                    else if(lastShiftVal === 'E') mappedShift = 'E';
+                    else if(lastShiftVal === 'N') mappedShift = 'N';
+                    else mappedShift = 'OFF';
+
+                    staffItem.lastShift = mappedShift;
+
+                    let consec = 0;
+                    if (mappedShift !== 'OFF') {
+                        for(let c = lastDayColIdx; c > 0; c--) { 
+                            if(!headers[c] || isNaN(parseInt(headers[c]))) break; 
+                            let cellVal = row[c] ? String(row[c]).toUpperCase() : 'OFF';
+                            if(['D','E','N','公'].includes(cellVal)) consec++;
+                            else break; 
+                        }
+                    }
+                    staffItem.lastConsec = consec;
+                    updatedCount++;
+                }
+            }
+
+            saveData();
+            renderStaff();
+            document.getElementById('importExcel').value = '';
+            alert(`✅ 讀取成功！已為 ${updatedCount} 位護理師自動更新「上月底狀態」。`);
+        };
+        reader.readAsArrayBuffer(file);
     }
 
     function sortStaff() {
@@ -273,11 +366,11 @@
             if (shiftOrder[a.targetShift] !== shiftOrder[b.targetShift]) return shiftOrder[a.targetShift] - shiftOrder[b.targetShift];
             return roleOrder[a.role] - roleOrder[b.role];
         });
-        saveData(); // 排序後存檔
+        saveData(); 
     }
 
     function initDate() {
-        loadData(); // 網頁開啟時優先載入資料
+        loadData(); 
         if(currentMonth > 12) { currentMonth = 1; currentYear++; }
         document.getElementById('settingYear').value = currentYear;
         document.getElementById('settingMonth').value = currentMonth;
@@ -293,7 +386,7 @@
         document.getElementById('rosterTitle').innerText = `${currentYear} 年 ${currentMonth} 月班表`;
         
         leaveList = leaveList.filter(l => l.date <= daysInMonth);
-        saveData(); // 存檔
+        saveData(); 
         renderCalendar(); 
         renderEmptyRoster(); 
     }
@@ -331,7 +424,7 @@
 
     function updateStaffData(index, field, value) {
         staffList[index][field] = value;
-        saveData(); // 存檔
+        saveData(); 
         if(field === 'role') renderStaff();
     }
 
@@ -340,14 +433,14 @@
         if (!name) return alert("請輸入姓名");
         staffList.push({ id: Date.now(), name: name, role: document.getElementById('s_role').value, targetShift: "D", isFixed: false, maxOff: 8, allowExtra: true, lastShift: "OFF", lastConsec: 0 });
         document.getElementById('s_name').value = '';
-        saveData(); // 存檔
+        saveData(); 
         sortStaff(); renderStaff();
     }
 
     function removeStaff(index) { 
         if(confirm(`確定刪除 ${staffList[index].name}？`)) { 
             staffList.splice(index, 1); 
-            saveData(); // 存檔
+            saveData(); 
             renderStaff(); 
         }
     }
@@ -389,14 +482,14 @@
         const type = document.getElementById('modalLeaveType').value;
         if(leaveList.find(l => l.staffName === name && l.date === date)) return alert(`⚠️ ${name} 在 ${date} 日已有預假！`);
         leaveList.push({ staffName: name, date: date, type: type });
-        saveData(); // 存檔
+        saveData(); 
         closeLeaveModal(); renderCalendar();
     }
     function removeLeaveByNameDate(name, date) {
         if(confirm(`確定刪除 ${name} 在 ${date} 日的預假嗎？`)) {
             const index = leaveList.findIndex(l => l.staffName === name && l.date === date);
             if(index > -1) leaveList.splice(index, 1);
-            saveData(); // 存檔
+            saveData(); 
             renderCalendar();
         }
     }
