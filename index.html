@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ER Roster Pro v4.3 (Shift Fix & Smart Leader)</title>
+    <title>ER Roster Pro v4.4 (Auto Save)</title>
     <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
     <style>
         :root {
@@ -100,7 +100,7 @@
 <body>
 
 <div class="sidebar">
-    <div class="logo">⚕️ ER Roster Sys v4.3</div>
+    <div class="logo">⚕️ ER Roster Sys v4.4</div>
     <div class="nav-item active" onclick="switchPage('staff', this)">1. 護理師建檔</div>
     <div class="nav-item" onclick="switchPage('rules', this)">2. 月份與需求設定</div>
     <div class="nav-item" onclick="switchPage('leaves', this)">3. 預假行事曆</div>
@@ -111,7 +111,10 @@
     
     <div id="page-staff" class="page active">
         <div class="card">
-            <div class="card-title">單位人員名單配置 (自動儲存)</div>
+            <div class="card-title">
+                <span>單位人員名單配置 <span style="font-size: 0.8rem; color: var(--success);">💾 已開啟自動記憶</span></span>
+                <button onclick="resetAllData()" class="danger" style="font-size: 0.8rem; padding: 5px 10px;">⚠️ 清除記憶 (恢復預設)</button>
+            </div>
             <div class="quick-add-bar">
                 <strong>➕ 新增人員：</strong>
                 <input type="text" id="s_name" placeholder="輸入姓名" style="width: 150px;">
@@ -120,7 +123,6 @@
                     <option value="Member">Member</option>
                 </select>
                 <button onclick="addStaff()" style="padding: 6px 12px;">加入</button>
-                <span style="font-size: 0.8rem; color: #64748b; margin-left: auto;">修改下方表格會即時生效，無需按儲存</span>
             </div>
             <div class="table-responsive">
                 <table id="staffTable">
@@ -148,11 +150,11 @@
             </div>
             <div class="card-title">人力需求設定</div>
             <div class="rules-text">
-                <strong>系統排班邏輯 (v4.3 重大修復版)：</strong><br>
-                1. <strong>絕對固班：</strong> 修復跳班死結。系統極度排斥將人員排入非指定的班別。<br>
-                2. <strong>彈性補位：</strong> 若找不到該班別的 Leader，將優先讓該班別 Member 頂上，確保排班不中斷。<br>
-                3. <strong>公假規則：</strong> 公假等同出勤(不扣OFF)，但絕對不會計入 15/18 天的「指定班別」配額中。<br>
-                4. <strong>防呆機制：</strong> 不可連上超過5天；不可 N->D/E, E->D；不可 N/E->公。<br>
+                <strong>系統排班邏輯 (v4.4 自動記憶版)：</strong><br>
+                1. <strong>資料儲存：</strong> 任何修改皆會自動儲存在您的瀏覽器中，關掉網頁資料也不會遺失。<br>
+                2. <strong>絕對固班：</strong> 修復跳班死結。系統極度排斥將人員排入非指定的班別。<br>
+                3. <strong>彈性補位：</strong> 若找不到該班別的 Leader，將優先讓該班別 Member 頂上，確保排班不中斷。<br>
+                4. <strong>公假規則：</strong> 公假等同出勤(不扣OFF)，但絕對不會計入 15/18 天的「指定班別」配額中。<br>
             </div>
             <div class="form-grid" style="margin-top: 15px;">
                 <div class="form-group"><label>D 班 每日需求人數</label><input type="number" id="reqD" value="4"></div>
@@ -206,7 +208,8 @@
 </div>
 
 <script>
-    let staffList = [
+    // 預設名單 (當LocalStorage沒有資料時使用)
+    const defaultStaffList = [
         { id: 1, name: "歐玉雯", role: "Leader", targetShift: "D", isFixed: true, maxOff: 8, allowExtra: false, lastShift: "D", lastConsec: 2 },
         { id: 2, name: "徐懿慶", role: "Leader", targetShift: "D", isFixed: false, maxOff: 8, allowExtra: true, lastShift: "OFF", lastConsec: 0 },
         { id: 3, name: "陳穎瑜", role: "Leader", targetShift: "D", isFixed: false, maxOff: 8, allowExtra: true, lastShift: "OFF", lastConsec: 0 },
@@ -225,10 +228,43 @@
         { id: 16, name: "葉芷薰", role: "Member", targetShift: "N", isFixed: false, maxOff: 8, allowExtra: true, lastShift: "OFF", lastConsec: 0 },
         { id: 17, name: "詹明軒", role: "Member", targetShift: "N", isFixed: false, maxOff: 8, allowExtra: true, lastShift: "OFF", lastConsec: 0 }
     ];
+    
+    let staffList = [];
     let leaveList = [];
+    
     let currentYear = new Date().getFullYear();
     let currentMonth = new Date().getMonth() + 2; 
     let daysInMonth = 30;
+
+    // --- LocalStorage 核心功能 ---
+    function loadData() {
+        const savedStaff = localStorage.getItem('erRoster_staffList_v4');
+        const savedLeaves = localStorage.getItem('erRoster_leaveList_v4');
+        
+        if (savedStaff) {
+            staffList = JSON.parse(savedStaff);
+        } else {
+            // 深拷貝預設名單
+            staffList = JSON.parse(JSON.stringify(defaultStaffList));
+        }
+        
+        if (savedLeaves) {
+            leaveList = JSON.parse(savedLeaves);
+        }
+    }
+
+    function saveData() {
+        localStorage.setItem('erRoster_staffList_v4', JSON.stringify(staffList));
+        localStorage.setItem('erRoster_leaveList_v4', JSON.stringify(leaveList));
+    }
+
+    function resetAllData() {
+        if(confirm("⚠️ 警告：這將清除所有已記憶的護理師資料與預假紀錄，並恢復為初始預設名單。\n\n確定要繼續嗎？")) {
+            localStorage.removeItem('erRoster_staffList_v4');
+            localStorage.removeItem('erRoster_leaveList_v4');
+            location.reload(); // 重整網頁
+        }
+    }
 
     function sortStaff() {
         const shiftOrder = { 'D': 1, 'E': 2, 'N': 3 };
@@ -237,9 +273,11 @@
             if (shiftOrder[a.targetShift] !== shiftOrder[b.targetShift]) return shiftOrder[a.targetShift] - shiftOrder[b.targetShift];
             return roleOrder[a.role] - roleOrder[b.role];
         });
+        saveData(); // 排序後存檔
     }
 
     function initDate() {
+        loadData(); // 網頁開啟時優先載入資料
         if(currentMonth > 12) { currentMonth = 1; currentYear++; }
         document.getElementById('settingYear').value = currentYear;
         document.getElementById('settingMonth').value = currentMonth;
@@ -253,7 +291,9 @@
         daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
         document.getElementById('displayDays').value = daysInMonth + " 天";
         document.getElementById('rosterTitle').innerText = `${currentYear} 年 ${currentMonth} 月班表`;
+        
         leaveList = leaveList.filter(l => l.date <= daysInMonth);
+        saveData(); // 存檔
         renderCalendar(); 
         renderEmptyRoster(); 
     }
@@ -291,6 +331,7 @@
 
     function updateStaffData(index, field, value) {
         staffList[index][field] = value;
+        saveData(); // 存檔
         if(field === 'role') renderStaff();
     }
 
@@ -299,11 +340,16 @@
         if (!name) return alert("請輸入姓名");
         staffList.push({ id: Date.now(), name: name, role: document.getElementById('s_role').value, targetShift: "D", isFixed: false, maxOff: 8, allowExtra: true, lastShift: "OFF", lastConsec: 0 });
         document.getElementById('s_name').value = '';
+        saveData(); // 存檔
         sortStaff(); renderStaff();
     }
 
     function removeStaff(index) { 
-        if(confirm(`確定刪除 ${staffList[index].name}？`)) { staffList.splice(index, 1); renderStaff(); }
+        if(confirm(`確定刪除 ${staffList[index].name}？`)) { 
+            staffList.splice(index, 1); 
+            saveData(); // 存檔
+            renderStaff(); 
+        }
     }
 
     // 行事曆
@@ -343,12 +389,14 @@
         const type = document.getElementById('modalLeaveType').value;
         if(leaveList.find(l => l.staffName === name && l.date === date)) return alert(`⚠️ ${name} 在 ${date} 日已有預假！`);
         leaveList.push({ staffName: name, date: date, type: type });
+        saveData(); // 存檔
         closeLeaveModal(); renderCalendar();
     }
     function removeLeaveByNameDate(name, date) {
         if(confirm(`確定刪除 ${name} 在 ${date} 日的預假嗎？`)) {
             const index = leaveList.findIndex(l => l.staffName === name && l.date === date);
             if(index > -1) leaveList.splice(index, 1);
+            saveData(); // 存檔
             renderCalendar();
         }
     }
@@ -508,14 +556,10 @@
                     
                     let chosenIdx = 0;
                     if (!hasLeader) {
-                        // 【關鍵修復】: 只有當找到的 Leader 確實是屬於這個班別的 (score >= 0) 才優先抓取，
-                        // 否則退而求其次抓 Member，避免全班空白！
                         const leaderIdx = candidates.findIndex(c => c.staff.role === 'Leader' && c.score >= 0);
                         if (leaderIdx !== -1) chosenIdx = leaderIdx;
                     }
                     
-                    // 如果連最適合的人選(可能是Member)都不該上這個班 (score < 0 代表跨班別違規)
-                    // 為了嚴格固班，寧願缺人也不抓來上。
                     if (candidates[chosenIdx].score < 0) break;
 
                     let chosen = candidates.splice(chosenIdx, 1)[0].staff;
@@ -556,8 +600,8 @@
         XLSX.writeFile(wb, `${currentYear}年${currentMonth}月-急診班表.xlsx`);
     }
 
-    initDate();
-    renderStaff();
+    // 啟動程式
+    window.onload = initDate;
 </script>
 </body>
 </html>
