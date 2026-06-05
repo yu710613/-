@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ER Roster Pro v3.6 (Inline Editing & Real Roster)</title>
+    <title>ER Roster Pro v3.8 (Group Sorting & Leave Logic)</title>
     <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
     <style>
         :root {
@@ -44,15 +44,12 @@
         button.danger { background: var(--danger); }
         button.success { background: var(--success); }
 
-        /* 表格與行內編輯設定 */
         .table-responsive { overflow-x: auto; }
         table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 0.85rem; }
         th, td { border: 1px solid var(--border); padding: 8px; text-align: center; vertical-align: middle; }
         th { background: #f8fafc; font-weight: bold; white-space: nowrap; }
         
-        .inline-select, .inline-input { 
-            padding: 4px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.85rem; width: 100%; text-align: center;
-        }
+        .inline-select, .inline-input { padding: 4px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.85rem; width: 100%; text-align: center; }
         .inline-input[type="number"] { width: 50px; }
         
         .tag { padding: 3px 6px; border-radius: 12px; font-size: 0.75rem; background: #e2e8f0; }
@@ -76,12 +73,14 @@
 
         .quick-add-bar { display: flex; gap: 10px; align-items: center; background: #f1f5f9; padding: 10px; border-radius: 8px; margin-bottom: 15px; }
         .quick-add-bar input, .quick-add-bar select { padding: 6px; border: 1px solid #ccc; border-radius: 4px; }
+        
+        .prev-month-info { font-size: 0.75rem; color: #64748b; background: #f1f5f9; padding: 2px 5px; border-radius: 4px; white-space: nowrap; }
     </style>
 </head>
 <body>
 
 <div class="sidebar">
-    <div class="logo">⚕️ ER Roster Sys v3.6</div>
+    <div class="logo">⚕️ ER Roster Sys v3.8</div>
     <div class="nav-item active" onclick="switchPage('staff', this)">1. 護理師建檔</div>
     <div class="nav-item" onclick="switchPage('rules', this)">2. 月份與需求設定</div>
     <div class="nav-item" onclick="switchPage('leaves', this)">3. 預假登錄</div>
@@ -141,10 +140,10 @@
             <div class="rules-text">
                 <strong>系統排班邏輯：</strong><br>
                 1. <strong>假別優先：</strong> 已登錄之預假絕對保留。<br>
-                2. <strong>公假規則：</strong> 公假視同白班，不計入當日單位的白班(D)人力。<br>
-                3. <strong>防呆機制：</strong> 不可連上超過5天；不可 N->D, N->E, E->D；不可 N->公, E->公。<br>
-                4. <strong>Leader 保障：</strong> 每天各班別優先挑選至少 1 名 Leader。<br>
-                5. <strong>避免碎班：</strong> 演算法會盡力避免「上一天休一天」的情形，盡量安排連上或連休。
+                2. <strong>公假規則：</strong> 公假不計入休假(OFF)額度，等同個人上班時數，但不計入單位的白班(D)防禦人力。<br>
+                3. <strong>防呆機制：</strong> 不可連上超過5天；不可 N->D, N->E, E->D；不可 N/E->公。<br>
+                4. <strong>休假平均分配：</strong> 系統會優先讓「不可超休」的人補滿上班天數。若有多餘的假需要安排，會自動派發給勾選「可超休」的人員。<br>
+                5. <strong>視覺分群：</strong> 班表與人員清單會自動依照 D -> E -> N 班別以及 Leader -> Member 進行排序。<br>
             </div>
             <div class="form-grid" style="margin-top: 15px;">
                 <div class="form-group"><label>D 班 每日需求人數</label><input type="number" id="reqD" value="4"></div>
@@ -188,9 +187,7 @@
 </div>
 
 <script>
-    // 寫入單位預設名單
     let staffList = [
-        // --- Leaders ---
         { id: 1, name: "歐玉雯", role: "Leader", targetShift: "D", isFixed: false, maxOff: 8, allowExtra: true, lastShift: "OFF", lastConsec: 0 },
         { id: 2, name: "徐懿慶", role: "Leader", targetShift: "D", isFixed: false, maxOff: 8, allowExtra: true, lastShift: "OFF", lastConsec: 0 },
         { id: 3, name: "陳穎瑜", role: "Leader", targetShift: "D", isFixed: false, maxOff: 8, allowExtra: true, lastShift: "OFF", lastConsec: 0 },
@@ -202,7 +199,6 @@
         { id: 9, name: "朱峻穎", role: "Leader", targetShift: "D", isFixed: false, maxOff: 8, allowExtra: true, lastShift: "OFF", lastConsec: 0 },
         { id: 10, name: "黃雅貞", role: "Leader", targetShift: "D", isFixed: false, maxOff: 8, allowExtra: true, lastShift: "OFF", lastConsec: 0 },
         { id: 11, name: "白雅文", role: "Leader", targetShift: "D", isFixed: false, maxOff: 8, allowExtra: true, lastShift: "OFF", lastConsec: 0 },
-        // --- Members ---
         { id: 12, name: "黃羿鈞", role: "Member", targetShift: "D", isFixed: false, maxOff: 8, allowExtra: true, lastShift: "OFF", lastConsec: 0 },
         { id: 13, name: "李恩瑜", role: "Member", targetShift: "D", isFixed: false, maxOff: 8, allowExtra: true, lastShift: "OFF", lastConsec: 0 },
         { id: 14, name: "李采凌", role: "Member", targetShift: "D", isFixed: false, maxOff: 8, allowExtra: true, lastShift: "OFF", lastConsec: 0 },
@@ -216,10 +212,24 @@
     let currentMonth = new Date().getMonth() + 2; 
     let daysInMonth = 30;
 
+    // --- 自動排序模組 (依照 D->E->N, Leader->Member) ---
+    function sortStaff() {
+        const shiftOrder = { 'D': 1, 'E': 2, 'N': 3 };
+        const roleOrder = { 'Leader': 1, 'Member': 2 };
+        
+        staffList.sort((a, b) => {
+            if (shiftOrder[a.targetShift] !== shiftOrder[b.targetShift]) {
+                return shiftOrder[a.targetShift] - shiftOrder[b.targetShift];
+            }
+            return roleOrder[a.role] - roleOrder[b.role];
+        });
+    }
+
     function initDate() {
         if(currentMonth > 12) { currentMonth = 1; currentYear++; }
         document.getElementById('settingYear').value = currentYear;
         document.getElementById('settingMonth').value = currentMonth;
+        sortStaff(); // 初始化時排序
         updateDaysInMonth();
     }
 
@@ -242,10 +252,15 @@
         document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
         document.getElementById(`page-${pageId}`).classList.add('active');
         if (element) element.classList.add('active');
+        
+        // 切換到班表頁面或預假頁面時，強制重新排序確保視覺一致
+        if(pageId === 'schedule' || pageId === 'leaves') {
+            sortStaff();
+        }
         if(pageId === 'leaves') updateLeaveStaffDropdown();
+        if(pageId === 'schedule') renderEmptyRoster();
     }
 
-    // --- 模組 1: 人員行內編輯渲染 ---
     function renderStaff() {
         const tbody = document.querySelector('#staffTable tbody');
         tbody.innerHTML = '';
@@ -269,13 +284,11 @@
                     </td>
                     <td>
                         <select onchange="updateStaffData(${idx}, 'isFixed', this.value==='true')" class="inline-select">
-                            <option value="false" ${!s.isFixed?'selected':''}>否 (15天)</option>
-                            <option value="true" ${s.isFixed?'selected':''}>是 (18天)</option>
+                            <option value="false" ${!s.isFixed?'selected':''}>否</option>
+                            <option value="true" ${s.isFixed?'selected':''}>是(18天)</option>
                         </select>
                     </td>
-                    <td>
-                        <input type="number" onchange="updateStaffData(${idx}, 'maxOff', parseInt(this.value)||0)" class="inline-input" value="${s.maxOff}">
-                    </td>
+                    <td><input type="number" onchange="updateStaffData(${idx}, 'maxOff', parseInt(this.value)||0)" class="inline-input" value="${s.maxOff}"></td>
                     <td>
                         <select onchange="updateStaffData(${idx}, 'allowExtra', this.value==='true')" class="inline-select">
                             <option value="true" ${s.allowExtra?'selected':''}>彈性可超</option>
@@ -290,50 +303,33 @@
                             <option value="N" ${s.lastShift==='N'?'selected':''}>N班</option>
                         </select>
                     </td>
-                    <td>
-                        <input type="number" onchange="updateStaffData(${idx}, 'lastConsec', parseInt(this.value)||0)" class="inline-input" value="${s.lastConsec}">
-                    </td>
-                    <td>
-                        <button class="danger" onclick="removeStaff(${idx})" style="padding:4px 8px; font-size:12px;">刪除</button>
-                    </td>
+                    <td><input type="number" onchange="updateStaffData(${idx}, 'lastConsec', parseInt(this.value)||0)" class="inline-input" value="${s.lastConsec}"></td>
+                    <td><button class="danger" onclick="removeStaff(${idx})" style="padding:4px 8px; font-size:12px;">刪除</button></td>
                 </tr>
             `;
         });
     }
 
-    // 行內更新資料函數
     function updateStaffData(index, field, value) {
         staffList[index][field] = value;
-        // 若變更職級，顏色會變，稍微重繪畫面
+        // 為了不干擾護理長連續編輯，修改班別時「不要」立刻跳動排序，等切換頁面時再排
         if(field === 'role') renderStaff();
     }
 
-    // 簡易新增函數
     function addStaff() {
         const name = document.getElementById('s_name').value.trim();
         if (!name) return alert("請輸入姓名");
-        
-        // 給予預設值，讓護理長後續在表格直接改
         staffList.push({
-            id: Date.now(), 
-            name: name, 
-            role: document.getElementById('s_role').value,
-            targetShift: "D",
-            isFixed: false,
-            maxOff: 8,
-            allowExtra: true,
-            lastShift: "OFF",
-            lastConsec: 0
+            id: Date.now(), name: name, role: document.getElementById('s_role').value,
+            targetShift: "D", isFixed: false, maxOff: 8, allowExtra: true, lastShift: "OFF", lastConsec: 0
         });
         document.getElementById('s_name').value = '';
+        sortStaff(); // 新增人員時排一次序
         renderStaff();
     }
 
     function removeStaff(index) { 
-        if(confirm(`確定要刪除 ${staffList[index].name} 嗎？`)) {
-            staffList.splice(index, 1); 
-            renderStaff(); 
-        }
+        if(confirm(`確定刪除 ${staffList[index].name}？`)) { staffList.splice(index, 1); renderStaff(); }
     }
 
     function updateLeaveStaffDropdown() {
@@ -352,8 +348,8 @@
     function addLeave() {
         const name = document.getElementById('leaveStaff').value;
         const date = parseInt(document.getElementById('leaveDate').value);
-        if (!date || date < 1 || date > daysInMonth) return alert(`請輸入正確日期 (1-${daysInMonth})`);
-        if(leaveList.find(l => l.staffName === name && l.date === date)) return alert("該員當日已有預假");
+        if (!date || date < 1 || date > daysInMonth) return alert(`日期限 1-${daysInMonth}`);
+        if(leaveList.find(l => l.staffName === name && l.date === date)) return alert("該日已有預假");
         leaveList.push({ staffName: name, date: date, type: document.getElementById('leaveType').value });
         renderLeaves();
     }
@@ -363,16 +359,20 @@
     function renderEmptyRoster() {
         const table = document.getElementById('rosterTable');
         
-        let headerHtml = '<thead><tr><th>姓名</th><th>班別</th>';
+        let headerHtml = '<thead><tr><th>姓名</th><th>班別</th><th>上月底</th>';
         for(let i=1; i<=daysInMonth; i++) headerHtml += `<th>${i}</th>`;
-        headerHtml += '<th class="summary-col">D</th><th class="summary-col">E</th><th class="summary-col">N</th><th class="summary-col">OFF</th><th class="summary-col">假</th></tr></thead><tbody>';
+        // 統計標題：將「假」改為「公」
+        headerHtml += '<th class="summary-col">D</th><th class="summary-col">E</th><th class="summary-col">N</th><th class="summary-col">OFF</th><th class="summary-col">公</th></tr></thead><tbody>';
 
         let bodyHtml = '';
         staffList.forEach(s => {
             const roleColor = s.role === 'Leader' ? 'red' : 'blue';
+            const prevInfo = s.lastShift === 'OFF' ? 'OFF' : `${s.lastShift}(連${s.lastConsec})`;
+            
             bodyHtml += `<tr>
                 <td style="font-size:12px; font-weight:bold; white-space:nowrap;">${s.name} <span style="color:${roleColor}">${s.role[0]}</span></td>
-                <td style="font-size:10px;">${s.targetShift}</td>`;
+                <td style="font-size:10px; font-weight:bold; color:#475569;">${s.targetShift}</td>
+                <td><div class="prev-month-info">${prevInfo}</div></td>`;
             
             for(let i=1; i<=daysInMonth; i++) {
                 const leave = leaveList.find(l => l.staffName === s.name && l.date === i);
@@ -393,7 +393,7 @@
 
         let footerHtml = '<tfoot>';
         ['D', 'E', 'N'].forEach(shift => {
-            footerHtml += `<tr class="summary-row daily-${shift}"><td colspan="2">${shift}班人力</td>`;
+            footerHtml += `<tr class="summary-row daily-${shift}"><td colspan="3">${shift}班人力</td>`;
             for(let i=1; i<=daysInMonth; i++) {
                 footerHtml += `<td id="daily-${shift}-${i}">0</td>`;
             }
@@ -427,6 +427,7 @@
                 if(val === 'D') counts.D++;
                 else if(val === 'E') counts.E++;
                 else if(val === 'N') counts.N++;
+                // 這裡嚴格將 OFF 歸類為休假，公/喪 歸類為公假類別
                 else if(val === 'OFF') counts.OFF++;
                 else if(val === '公' || val === '喪') counts.LEAVE++;
             }
@@ -460,6 +461,8 @@
 
     function generateRoster() {
         if(staffList.length === 0) return alert("請先建檔護理人員");
+        
+        sortStaff(); // 確保排班演算法也是照順序處理
         renderEmptyRoster();
 
         const req = {
@@ -477,6 +480,7 @@
                 consecOff: s.lastShift === 'OFF' ? 1 : 0, 
                 targetDaysCount: 0, 
                 offCount: 0, 
+                workCount: 0, 
                 targetNeed: s.isFixed ? 18 : 15 
             };
         });
@@ -487,12 +491,21 @@
 
             staffList.forEach(s => {
                 const cell = document.getElementById(`cell-${s.name}-${d}`);
+                // 公假不算休假(不加 offCount)，但算作個人上班時數(workCount++)，防禦人力不折抵
                 if(cell.value === '公') { 
                     state[s.name].yesterdayShift = 'D'; 
                     state[s.name].consecWork++; 
                     state[s.name].consecOff = 0; 
+                    state[s.name].workCount++; 
                 }
-                else if(cell.value === '喪' || cell.value === 'OFF') { 
+                // 喪假與OFF則算入休息狀態(這裡 offCount 只統計真的OFF，喪假不扣OFF額度)
+                else if(cell.value === '喪') { 
+                    state[s.name].yesterdayShift = 'OFF'; 
+                    state[s.name].consecWork = 0; 
+                    state[s.name].consecOff++; 
+                    // 不增加 offCount，讓喪假不吃掉每月8天的OFF
+                }
+                else if(cell.value === 'OFF') { 
                     state[s.name].yesterdayShift = 'OFF'; 
                     state[s.name].consecWork = 0; 
                     state[s.name].consecOff++; 
@@ -521,8 +534,16 @@
                     if (s.targetShift === shiftType) score += 50; 
                     else if (st.yesterdayShift === shiftType && st.yesterdayShift !== 'OFF') score += 20;
                     
-                    if (s.targetShift === shiftType && st.targetDaysCount < st.targetNeed) score += 30; 
-                    score -= (st.targetDaysCount * 2);
+                    // 時數平衡機制：確保不可超休的人必定上滿天數
+                    let targetWorkDays = daysInMonth - s.maxOff;
+                    let workDeficit = targetWorkDays - st.workCount;
+                    score += (workDeficit * 5); 
+
+                    if (!s.allowExtra && st.offCount >= s.maxOff) {
+                        score += 200; 
+                    } else if (s.allowExtra) {
+                        score -= 20; 
+                    }
 
                     if (st.consecWork === 1) score += 40;
                     if (st.yesterdayShift === 'OFF' && st.consecOff === 1) score -= 40;
@@ -544,12 +565,14 @@
                     }
                     let chosen = candidates.splice(chosenIdx, 1)[0].staff;
                     const cell = document.getElementById(`cell-${chosen.name}-${d}`);
+                    
                     cell.value = shiftType;
                     updateColor(cell);
                     
                     state[chosen.name].yesterdayShift = shiftType;
                     state[chosen.name].consecWork++;
                     state[chosen.name].consecOff = 0; 
+                    state[chosen.name].workCount++;
                     
                     if(chosen.targetShift === shiftType) state[chosen.name].targetDaysCount++;
                     dailyAssigned[shiftType].push(chosen.name);
@@ -571,7 +594,7 @@
         }
         
         updateSummaries();
-        alert("初版排班已產生！\n已套用「防碎班」及「不可N/E接公」等防呆規則。");
+        alert("排班完成！\n✔️ 班表已依 D->E->N 及 Leader->Member 排序\n✔️ 公假獨立計算，不扣抵每月 OFF 額度");
     }
 
     function exportExcel() {
