@@ -146,8 +146,8 @@
             </div>
             <div class="form-grid" style="margin-top: 15px;">
                 <div class="form-group"><label>D 班 每日需求人數</label><input type="number" id="reqD" value="4"></div>
-                <div class="form-group"><label>E 班 每日需求人數</label><input type="number" id="reqE" value="3"></div>
-                <div class="form-group"><label>N 班 每日需求人數</label><input type="number" id="reqN" value="2"></div>
+                <div class="form-group"><label>E 班 每日需求人數</label><input type="number" id="reqE" value="4"></div>
+                <div class="form-group"><label>N 班 每日需求人數</label><input type="number" id="reqN" value="3"></div>
             </div>
         </div>
     </div>
@@ -187,23 +187,23 @@
 
 <script>
     let staffList = [
-        { id: 1, name: "歐玉雯", role: "Leader", targetShift: "D", isFixed: true, maxOff: 8, allowExtra: false, lastShift: "D", lastConsec: 2 },
-        { id: 2, name: "徐懿慶", role: "Leader", targetShift: "D", isFixed: false, maxOff: 8, allowExtra: true, lastShift: "OFF", lastConsec: 0 },
-        { id: 3, name: "陳穎瑜", role: "Leader", targetShift: "D", isFixed: false, maxOff: 8, allowExtra: true, lastShift: "OFF", lastConsec: 0 },
-        { id: 4, name: "方亦稜", role: "Leader", targetShift: "D", isFixed: false, maxOff: 8, allowExtra: true, lastShift: "OFF", lastConsec: 0 },
-        { id: 5, name: "王彥文", role: "Leader", targetShift: "E", isFixed: true, maxOff: 8, allowExtra: false, lastShift: "E", lastConsec: 1 },
-        { id: 6, name: "羅雅妮", role: "Leader", targetShift: "E", isFixed: false, maxOff: 8, allowExtra: true, lastShift: "OFF", lastConsec: 0 },
+        { id: 1, name: "歐玉雯", role: "Leader", targetShift: "E", isFixed: true, maxOff: 8, allowExtra: false, lastShift: "D", lastConsec: 2 },
+        { id: 2, name: "徐懿慶", role: "Leader", targetShift: "E", isFixed: false, maxOff: 8, allowExtra: true, lastShift: "OFF", lastConsec: 0 },
+        { id: 3, name: "陳穎瑜", role: "Leader", targetShift: "E", isFixed: false, maxOff: 8, allowExtra: true, lastShift: "OFF", lastConsec: 0 },
+        { id: 4, name: "方亦稜", role: "Leader", targetShift: "N", isFixed: false, maxOff: 8, allowExtra: true, lastShift: "OFF", lastConsec: 0 },
+        { id: 5, name: "王彥文", role: "Leader", targetShift: "N", isFixed: true, maxOff: 8, allowExtra: false, lastShift: "E", lastConsec: 1 },
+        { id: 6, name: "羅雅妮", role: "Leader", targetShift: "D", isFixed: false, maxOff: 8, allowExtra: true, lastShift: "OFF", lastConsec: 0 },
         { id: 7, name: "莊婉如", role: "Leader", targetShift: "E", isFixed: false, maxOff: 8, allowExtra: true, lastShift: "OFF", lastConsec: 0 },
         { id: 8, name: "陳宣妤", role: "Leader", targetShift: "N", isFixed: true, maxOff: 8, allowExtra: false, lastShift: "N", lastConsec: 2 },
-        { id: 9, name: "朱峻穎", role: "Leader", targetShift: "N", isFixed: false, maxOff: 8, allowExtra: true, lastShift: "OFF", lastConsec: 0 },
+        { id: 9, name: "朱峻穎", role: "Leader", targetShift: "E", isFixed: false, maxOff: 8, allowExtra: true, lastShift: "OFF", lastConsec: 0 },
         { id: 10, name: "黃雅貞", role: "Leader", targetShift: "N", isFixed: false, maxOff: 8, allowExtra: true, lastShift: "OFF", lastConsec: 0 },
         { id: 11, name: "白雅文", role: "Leader", targetShift: "D", isFixed: false, maxOff: 8, allowExtra: true, lastShift: "OFF", lastConsec: 0 },
-        { id: 12, name: "黃羿鈞", role: "Member", targetShift: "D", isFixed: false, maxOff: 8, allowExtra: true, lastShift: "OFF", lastConsec: 0 },
+        { id: 12, name: "黃羿鈞", role: "Member", targetShift: "N", isFixed: false, maxOff: 8, allowExtra: true, lastShift: "OFF", lastConsec: 0 },
         { id: 13, name: "李恩瑜", role: "Member", targetShift: "D", isFixed: false, maxOff: 8, allowExtra: true, lastShift: "OFF", lastConsec: 0 },
-        { id: 14, name: "李采凌", role: "Member", targetShift: "E", isFixed: false, maxOff: 8, allowExtra: true, lastShift: "OFF", lastConsec: 0 },
-        { id: 15, name: "楊捷惠", role: "Member", targetShift: "E", isFixed: false, maxOff: 8, allowExtra: true, lastShift: "OFF", lastConsec: 0 },
-        { id: 16, name: "葉芷薰", role: "Member", targetShift: "N", isFixed: false, maxOff: 8, allowExtra: true, lastShift: "OFF", lastConsec: 0 },
-        { id: 17, name: "詹明軒", role: "Member", targetShift: "N", isFixed: false, maxOff: 8, allowExtra: true, lastShift: "OFF", lastConsec: 0 }
+        { id: 14, name: "李采凌", role: "Member", targetShift: "D", isFixed: false, maxOff: 8, allowExtra: true, lastShift: "OFF", lastConsec: 0 },
+        { id: 15, name: "楊捷惠", role: "Member", targetShift: "D", isFixed: false, maxOff: 8, allowExtra: true, lastShift: "OFF", lastConsec: 0 },
+        { id: 16, name: "葉芷薰", role: "Member", targetShift: "D", isFixed: false, maxOff: 8, allowExtra: true, lastShift: "OFF", lastConsec: 0 },
+        { id: 17, name: "詹明軒", role: "Member", targetShift: "E", isFixed: false, maxOff: 8, allowExtra: true, lastShift: "OFF", lastConsec: 0 }
     ];
     let leaveList = [];
     
