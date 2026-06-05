@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ER Roster Pro v4.0 (Target Shift Quota Fix)</title>
+    <title>ER Roster Pro v4.1 (Strict Quota Logic)</title>
     <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
     <style>
         :root {
@@ -80,7 +80,7 @@
 <body>
 
 <div class="sidebar">
-    <div class="logo">⚕️ ER Roster Sys v4.0</div>
+    <div class="logo">⚕️ ER Roster Sys v4.1</div>
     <div class="nav-item active" onclick="switchPage('staff', this)">1. 護理師建檔</div>
     <div class="nav-item" onclick="switchPage('rules', this)">2. 月份與需求設定</div>
     <div class="nav-item" onclick="switchPage('leaves', this)">3. 預假登錄</div>
@@ -138,10 +138,10 @@
 
             <div class="card-title">人力需求設定</div>
             <div class="rules-text">
-                <strong>系統排班邏輯 (v4.0 班別天數嚴格配額)：</strong><br>
+                <strong>系統排班邏輯 (v4.1)：</strong><br>
                 1. <strong>絕對固班：</strong> 寧可缺人也不會讓人跳班。系統極度排斥將人員排入非指定的班別。<br>
-                2. <strong>包班特權：</strong> 勾選包班(18天)與一般(15天)，<strong>指的是「該月指定班別」的天數必須達標</strong>，而非所有班別的總上班天數。<br>
-                3. <strong>公假規則：</strong> 公假等同白班(D)。若人員的指定班別剛好是D，則公假會計入其 15/18 天之配額中。<br>
+                2. <strong>包班特權：</strong> 勾選包班(18天)與一般(15天)，指的是「該月指定班別」的實質上班天數必須達標。<br>
+                3. <strong>公假規則：</strong> 公假等同出勤上班(不扣OFF)，但<strong>絕對不會計入</strong> 15/18 天的指定班別配額中。<br>
                 4. <strong>防呆與防碎班：</strong> 不可連上超過5天；不可 N->D/E, E->D；不可 N/E->公；盡量避免上一天休一天。<br>
             </div>
             <div class="form-grid" style="margin-top: 15px;">
@@ -211,7 +211,6 @@
     let currentMonth = new Date().getMonth() + 2; 
     let daysInMonth = 30;
 
-    // 自動排序模組
     function sortStaff() {
         const shiftOrder = { 'D': 1, 'E': 2, 'N': 3 };
         const roleOrder = { 'Leader': 1, 'Member': 2 };
@@ -473,7 +472,7 @@
                 consecWork: s.lastConsec, 
                 yesterdayShift: s.lastShift, 
                 consecOff: s.lastShift === 'OFF' ? 1 : 0, 
-                targetDaysCount: 0, // 核心！這用來記錄「上了幾天指定班別」
+                targetDaysCount: 0, 
                 offCount: 0, 
                 workCount: 0, 
                 targetNeed: s.isFixed ? 18 : 15 
@@ -486,16 +485,13 @@
 
             staffList.forEach(s => {
                 const cell = document.getElementById(`cell-${s.name}-${d}`);
-                // 公假算白班
+                
                 if(cell.value === '公') { 
                     state[s.name].yesterdayShift = 'D'; 
                     state[s.name].consecWork++; 
                     state[s.name].consecOff = 0; 
                     state[s.name].workCount++; 
-                    // 若這人的指定班別也是 D，則公假算進 15/18 天配額
-                    if(s.targetShift === 'D') {
-                        state[s.name].targetDaysCount++;
-                    }
+                    // [修正點] 公假不再計入 targetDaysCount (15/18天的配額中)
                 }
                 else if(cell.value === '喪') { 
                     state[s.name].yesterdayShift = 'OFF'; 
@@ -529,41 +525,36 @@
                     
                     let score = 0;
 
-                    // 1. 本命班別與配額保障 (關鍵修正：只看 targetDaysCount)
                     if (s.targetShift === shiftType) {
-                        score += 2000; // 絕對優先本命班
+                        score += 2000; 
                         
                         if (st.targetDaysCount < st.targetNeed) {
                             let deficit = st.targetNeed - st.targetDaysCount;
                             if (s.isFixed) {
-                                score += 1000 + (deficit * 20); // 包班 18 天強力保障
+                                score += 1000 + (deficit * 20); 
                             } else {
-                                score += 500 + (deficit * 10);  // 一般 15 天保障
+                                score += 500 + (deficit * 10);  
                             }
                         }
                     } else {
-                        score -= 2000; // 極度排斥跳班
+                        score -= 2000; 
                         if (st.yesterdayShift === shiftType && st.yesterdayShift !== 'OFF') {
                             score += 50; 
                         }
                     }
                     
-                    // 2. 時數平衡機制 (這裡依然看總上班數，因為不能超過合法工作天數)
                     let targetWorkDays = daysInMonth - s.maxOff;
                     let workDeficit = targetWorkDays - st.workCount;
                     score += (workDeficit * 5); 
 
-                    // 嚴格休假控制：不允許超休且假放完了，絕對強制上班
                     if (!s.allowExtra && st.offCount >= s.maxOff) {
                         score += 5000; 
                     } else if (s.allowExtra) {
-                        // 若本命班天數已經達標，且可超休，就讓他多放假
                         if (st.targetDaysCount >= st.targetNeed) {
                             score -= 50; 
                         }
                     }
 
-                    // 3. 防碎班
                     if (st.consecWork === 1) score += 200;
                     if (st.yesterdayShift === 'OFF' && st.consecOff === 1) score -= 200;
 
@@ -615,7 +606,7 @@
         }
         
         updateSummaries();
-        alert("排班完成！\n✔️ 15/18 天之配額計算已嚴格鎖定為「該月指定班別」的天數。\n✔️ 若人員指定班別為 D，公假亦算入其配額。");
+        alert("排班完成！\n✔️ 已修正公假不計入指定班別（15/18天）之配額中。");
     }
 
     function exportExcel() {
