@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ER Roster Pro v3.5 (Look-ahead Rules)</title>
+    <title>ER Roster Pro v3.6 (Inline Editing & Real Roster)</title>
     <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
     <style>
         :root {
@@ -22,7 +22,7 @@
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: "Segoe UI", sans-serif; }
         body { display: flex; height: 100vh; background-color: var(--bg); color: var(--text-main); }
 
-        .sidebar { width: 250px; background: var(--sidebar-bg); color: white; display: flex; flex-direction: column; }
+        .sidebar { width: 250px; background: var(--sidebar-bg); color: white; display: flex; flex-direction: column; flex-shrink: 0; }
         .logo { padding: 20px; font-size: 1.2rem; font-weight: bold; border-bottom: 1px solid var(--sidebar-hover); }
         .nav-item { padding: 15px 20px; cursor: pointer; border-left: 4px solid transparent; }
         .nav-item:hover { background: var(--sidebar-hover); }
@@ -44,9 +44,16 @@
         button.danger { background: var(--danger); }
         button.success { background: var(--success); }
 
+        /* 表格與行內編輯設定 */
+        .table-responsive { overflow-x: auto; }
         table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 0.85rem; }
-        th, td { border: 1px solid var(--border); padding: 8px; text-align: center; }
-        th { background: #f8fafc; font-weight: bold; }
+        th, td { border: 1px solid var(--border); padding: 8px; text-align: center; vertical-align: middle; }
+        th { background: #f8fafc; font-weight: bold; white-space: nowrap; }
+        
+        .inline-select, .inline-input { 
+            padding: 4px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.85rem; width: 100%; text-align: center;
+        }
+        .inline-input[type="number"] { width: 50px; }
         
         .tag { padding: 3px 6px; border-radius: 12px; font-size: 0.75rem; background: #e2e8f0; }
         .tag.leader { background: #fee2e2; color: #991b1b; }
@@ -66,12 +73,15 @@
 
         .rules-text { font-size: 0.9rem; color: #64748b; line-height: 1.6; background: #f8fafc; padding: 15px; border-radius: 5px; }
         .month-settings { background: #e0f2fe; padding: 15px; border-radius: 8px; margin-bottom: 20px; border: 1px solid #bae6fd; }
+
+        .quick-add-bar { display: flex; gap: 10px; align-items: center; background: #f1f5f9; padding: 10px; border-radius: 8px; margin-bottom: 15px; }
+        .quick-add-bar input, .quick-add-bar select { padding: 6px; border: 1px solid #ccc; border-radius: 4px; }
     </style>
 </head>
 <body>
 
 <div class="sidebar">
-    <div class="logo">⚕️ ER Roster Sys v3.5</div>
+    <div class="logo">⚕️ ER Roster Sys v3.6</div>
     <div class="nav-item active" onclick="switchPage('staff', this)">1. 護理師建檔</div>
     <div class="nav-item" onclick="switchPage('rules', this)">2. 月份與需求設定</div>
     <div class="nav-item" onclick="switchPage('leaves', this)">3. 預假登錄</div>
@@ -80,31 +90,42 @@
 
 <div class="main-content">
     
-    <!-- 頁面 1: 人員建檔 -->
     <div id="page-staff" class="page active">
         <div class="card">
-            <div class="card-title">新增 / 編輯護理師資料</div>
+            <div class="card-title">單位人員名單配置 (自動儲存)</div>
             
-            <div class="form-grid">
-                <div class="form-group"><label>姓名</label><input type="text" id="s_name" placeholder="例如: 王小明"></div>
-                <div class="form-group"><label>職級</label><select id="s_role"><option value="Leader">Leader</option><option value="Member">Member</option></select></div>
-                <div class="form-group"><label>當月指派班別</label><select id="s_shift"><option value="D">白班 (D)</option><option value="E">小夜 (E)</option><option value="N">大夜 (N)</option></select></div>
-                <div class="form-group"><label>長期包班</label><select id="s_fixed"><option value="false">否 (須滿15天)</option><option value="true">是 (須滿18天)</option></select></div>
-                <div class="form-group"><label>當月休假天數 (OFF)</label><input type="number" id="s_maxOff" value="8"></div>
-                <div class="form-group"><label>可排超過休假天數?</label><select id="s_allowExtra"><option value="true">可超過 (彈性)</option><option value="false">不可超過 (嚴格)</option></select></div>
-                <div class="form-group"><label>上月底最後班別</label><select id="s_lastShift"><option value="OFF">OFF / 休假</option><option value="D">白班 (D)</option><option value="E">小夜 (E)</option><option value="N">大夜 (N)</option></select></div>
-                <div class="form-group"><label>上月底連上天數</label><input type="number" id="s_lastConsec" value="0"></div>
+            <div class="quick-add-bar">
+                <strong>➕ 新增人員：</strong>
+                <input type="text" id="s_name" placeholder="輸入姓名" style="width: 150px;">
+                <select id="s_role">
+                    <option value="Leader">Leader</option>
+                    <option value="Member">Member</option>
+                </select>
+                <button onclick="addStaff()" style="padding: 6px 12px;">加入</button>
+                <span style="font-size: 0.8rem; color: #64748b; margin-left: auto;">修改下方表格會即時生效，無需按儲存</span>
             </div>
-            <button onclick="addStaff()">+ 儲存人員資料</button>
 
-            <table id="staffTable">
-                <thead><tr><th>姓名/職級</th><th>當月班別/包班</th><th>休假額度</th><th>上月跨越狀態</th><th>操作</th></tr></thead>
-                <tbody></tbody>
-            </table>
+            <div class="table-responsive">
+                <table id="staffTable">
+                    <thead>
+                        <tr>
+                            <th>姓名</th>
+                            <th>職級</th>
+                            <th>當月班別</th>
+                            <th>長期包班</th>
+                            <th>休假額度</th>
+                            <th>可超休</th>
+                            <th>上月底班別</th>
+                            <th>上月底連上</th>
+                            <th>操作</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
         </div>
     </div>
 
-    <!-- 頁面 2: 規則設定 -->
     <div id="page-rules" class="page">
         <div class="card">
             <div class="card-title">排班月份設定</div>
@@ -121,7 +142,7 @@
                 <strong>系統排班邏輯：</strong><br>
                 1. <strong>假別優先：</strong> 已登錄之預假絕對保留。<br>
                 2. <strong>公假規則：</strong> 公假視同白班，不計入當日單位的白班(D)人力。<br>
-                3. <strong>防呆機制：</strong> 不可連上超過5天；不可 N->D, N->E, E->D；<strong>不可 N->公, E->公</strong>。<br>
+                3. <strong>防呆機制：</strong> 不可連上超過5天；不可 N->D, N->E, E->D；不可 N->公, E->公。<br>
                 4. <strong>Leader 保障：</strong> 每天各班別優先挑選至少 1 名 Leader。<br>
                 5. <strong>避免碎班：</strong> 演算法會盡力避免「上一天休一天」的情形，盡量安排連上或連休。
             </div>
@@ -133,7 +154,6 @@
         </div>
     </div>
 
-    <!-- 頁面 3: 預假設定 -->
     <div id="page-leaves" class="page">
         <div class="card">
             <div class="card-title">預假登錄</div>
@@ -150,7 +170,6 @@
         </div>
     </div>
 
-    <!-- 頁面 4: 班表產生 -->
     <div id="page-schedule" class="page">
         <div class="card">
             <div class="card-title" style="display:flex; justify-content:space-between; align-items:center;">
@@ -169,11 +188,27 @@
 </div>
 
 <script>
+    // 寫入單位預設名單
     let staffList = [
-        { id: 1, name: "王小明", role: "Leader", targetShift: "D", isFixed: false, maxOff: 8, allowExtra: true, lastShift: "N", lastConsec: 2 },
-        { id: 2, name: "李小美", role: "Member", targetShift: "D", isFixed: true, maxOff: 8, allowExtra: false, lastShift: "D", lastConsec: 3 },
-        { id: 3, name: "陳阿信", role: "Leader", targetShift: "E", isFixed: false, maxOff: 8, allowExtra: true, lastShift: "E", lastConsec: 1 },
-        { id: 4, name: "林急診", role: "Member", targetShift: "N", isFixed: false, maxOff: 8, allowExtra: true, lastShift: "OFF", lastConsec: 0 }
+        // --- Leaders ---
+        { id: 1, name: "歐玉雯", role: "Leader", targetShift: "D", isFixed: false, maxOff: 8, allowExtra: true, lastShift: "OFF", lastConsec: 0 },
+        { id: 2, name: "徐懿慶", role: "Leader", targetShift: "D", isFixed: false, maxOff: 8, allowExtra: true, lastShift: "OFF", lastConsec: 0 },
+        { id: 3, name: "陳穎瑜", role: "Leader", targetShift: "D", isFixed: false, maxOff: 8, allowExtra: true, lastShift: "OFF", lastConsec: 0 },
+        { id: 4, name: "方亦稜", role: "Leader", targetShift: "D", isFixed: false, maxOff: 8, allowExtra: true, lastShift: "OFF", lastConsec: 0 },
+        { id: 5, name: "王彥文", role: "Leader", targetShift: "D", isFixed: false, maxOff: 8, allowExtra: true, lastShift: "OFF", lastConsec: 0 },
+        { id: 6, name: "羅雅妮", role: "Leader", targetShift: "D", isFixed: false, maxOff: 8, allowExtra: true, lastShift: "OFF", lastConsec: 0 },
+        { id: 7, name: "莊婉如", role: "Leader", targetShift: "D", isFixed: false, maxOff: 8, allowExtra: true, lastShift: "OFF", lastConsec: 0 },
+        { id: 8, name: "陳宣妤", role: "Leader", targetShift: "D", isFixed: false, maxOff: 8, allowExtra: true, lastShift: "OFF", lastConsec: 0 },
+        { id: 9, name: "朱峻穎", role: "Leader", targetShift: "D", isFixed: false, maxOff: 8, allowExtra: true, lastShift: "OFF", lastConsec: 0 },
+        { id: 10, name: "黃雅貞", role: "Leader", targetShift: "D", isFixed: false, maxOff: 8, allowExtra: true, lastShift: "OFF", lastConsec: 0 },
+        { id: 11, name: "白雅文", role: "Leader", targetShift: "D", isFixed: false, maxOff: 8, allowExtra: true, lastShift: "OFF", lastConsec: 0 },
+        // --- Members ---
+        { id: 12, name: "黃羿鈞", role: "Member", targetShift: "D", isFixed: false, maxOff: 8, allowExtra: true, lastShift: "OFF", lastConsec: 0 },
+        { id: 13, name: "李恩瑜", role: "Member", targetShift: "D", isFixed: false, maxOff: 8, allowExtra: true, lastShift: "OFF", lastConsec: 0 },
+        { id: 14, name: "李采凌", role: "Member", targetShift: "D", isFixed: false, maxOff: 8, allowExtra: true, lastShift: "OFF", lastConsec: 0 },
+        { id: 15, name: "楊捷惠", role: "Member", targetShift: "D", isFixed: false, maxOff: 8, allowExtra: true, lastShift: "OFF", lastConsec: 0 },
+        { id: 16, name: "葉芷薰", role: "Member", targetShift: "D", isFixed: false, maxOff: 8, allowExtra: true, lastShift: "OFF", lastConsec: 0 },
+        { id: 17, name: "詹明軒", role: "Member", targetShift: "D", isFixed: false, maxOff: 8, allowExtra: true, lastShift: "OFF", lastConsec: 0 }
     ];
     let leaveList = [];
     
@@ -210,40 +245,96 @@
         if(pageId === 'leaves') updateLeaveStaffDropdown();
     }
 
+    // --- 模組 1: 人員行內編輯渲染 ---
     function renderStaff() {
         const tbody = document.querySelector('#staffTable tbody');
         tbody.innerHTML = '';
         staffList.forEach((s, idx) => {
-            const roleClass = s.role === 'Leader' ? 'leader' : 'member';
+            const roleColor = s.role === 'Leader' ? '#991b1b' : '#075985';
             tbody.innerHTML += `
                 <tr>
-                    <td><b>${s.name}</b> <span class="tag ${roleClass}">${s.role}</span></td>
-                    <td>${s.targetShift}班 ${s.isFixed ? '(包班)' : ''}</td>
-                    <td>${s.maxOff}天 ${s.allowExtra ? '' : '<span style="color:red; font-size:10px;">(不可超)</span>'}</td>
-                    <td>接: ${s.lastShift}, 連: ${s.lastConsec}</td>
-                    <td><button class="danger" onclick="removeStaff(${idx})" style="padding:4px 8px; font-size:12px;">刪除</button></td>
+                    <td style="font-weight:bold;">${s.name}</td>
+                    <td>
+                        <select onchange="updateStaffData(${idx}, 'role', this.value)" class="inline-select" style="color:${roleColor}; font-weight:bold;">
+                            <option value="Leader" ${s.role==='Leader'?'selected':''}>Leader</option>
+                            <option value="Member" ${s.role==='Member'?'selected':''}>Member</option>
+                        </select>
+                    </td>
+                    <td>
+                        <select onchange="updateStaffData(${idx}, 'targetShift', this.value)" class="inline-select">
+                            <option value="D" ${s.targetShift==='D'?'selected':''}>D班</option>
+                            <option value="E" ${s.targetShift==='E'?'selected':''}>E班</option>
+                            <option value="N" ${s.targetShift==='N'?'selected':''}>N班</option>
+                        </select>
+                    </td>
+                    <td>
+                        <select onchange="updateStaffData(${idx}, 'isFixed', this.value==='true')" class="inline-select">
+                            <option value="false" ${!s.isFixed?'selected':''}>否 (15天)</option>
+                            <option value="true" ${s.isFixed?'selected':''}>是 (18天)</option>
+                        </select>
+                    </td>
+                    <td>
+                        <input type="number" onchange="updateStaffData(${idx}, 'maxOff', parseInt(this.value)||0)" class="inline-input" value="${s.maxOff}">
+                    </td>
+                    <td>
+                        <select onchange="updateStaffData(${idx}, 'allowExtra', this.value==='true')" class="inline-select">
+                            <option value="true" ${s.allowExtra?'selected':''}>彈性可超</option>
+                            <option value="false" ${!s.allowExtra?'selected':''}>嚴格禁超</option>
+                        </select>
+                    </td>
+                    <td>
+                        <select onchange="updateStaffData(${idx}, 'lastShift', this.value)" class="inline-select">
+                            <option value="OFF" ${s.lastShift==='OFF'?'selected':''}>OFF/假</option>
+                            <option value="D" ${s.lastShift==='D'?'selected':''}>D班</option>
+                            <option value="E" ${s.lastShift==='E'?'selected':''}>E班</option>
+                            <option value="N" ${s.lastShift==='N'?'selected':''}>N班</option>
+                        </select>
+                    </td>
+                    <td>
+                        <input type="number" onchange="updateStaffData(${idx}, 'lastConsec', parseInt(this.value)||0)" class="inline-input" value="${s.lastConsec}">
+                    </td>
+                    <td>
+                        <button class="danger" onclick="removeStaff(${idx})" style="padding:4px 8px; font-size:12px;">刪除</button>
+                    </td>
                 </tr>
             `;
         });
     }
 
+    // 行內更新資料函數
+    function updateStaffData(index, field, value) {
+        staffList[index][field] = value;
+        // 若變更職級，顏色會變，稍微重繪畫面
+        if(field === 'role') renderStaff();
+    }
+
+    // 簡易新增函數
     function addStaff() {
         const name = document.getElementById('s_name').value.trim();
         if (!name) return alert("請輸入姓名");
+        
+        // 給予預設值，讓護理長後續在表格直接改
         staffList.push({
-            id: Date.now(), name: name, role: document.getElementById('s_role').value,
-            targetShift: document.getElementById('s_shift').value,
-            isFixed: document.getElementById('s_fixed').value === "true",
-            maxOff: parseInt(document.getElementById('s_maxOff').value) || 8,
-            allowExtra: document.getElementById('s_allowExtra').value === "true",
-            lastShift: document.getElementById('s_lastShift').value,
-            lastConsec: parseInt(document.getElementById('s_lastConsec').value) || 0
+            id: Date.now(), 
+            name: name, 
+            role: document.getElementById('s_role').value,
+            targetShift: "D",
+            isFixed: false,
+            maxOff: 8,
+            allowExtra: true,
+            lastShift: "OFF",
+            lastConsec: 0
         });
         document.getElementById('s_name').value = '';
         renderStaff();
     }
 
-    function removeStaff(index) { staffList.splice(index, 1); renderStaff(); }
+    function removeStaff(index) { 
+        if(confirm(`確定要刪除 ${staffList[index].name} 嗎？`)) {
+            staffList.splice(index, 1); 
+            renderStaff(); 
+        }
+    }
 
     function updateLeaveStaffDropdown() {
         document.getElementById('leaveStaff').innerHTML = staffList.map(s => `<option value="${s.name}">${s.name}</option>`).join('');
@@ -280,7 +371,7 @@
         staffList.forEach(s => {
             const roleColor = s.role === 'Leader' ? 'red' : 'blue';
             bodyHtml += `<tr>
-                <td style="font-size:12px; font-weight:bold;">${s.name} <span style="color:${roleColor}">${s.role[0]}</span></td>
+                <td style="font-size:12px; font-weight:bold; white-space:nowrap;">${s.name} <span style="color:${roleColor}">${s.role[0]}</span></td>
                 <td style="font-size:10px;">${s.targetShift}</td>`;
             
             for(let i=1; i<=daysInMonth; i++) {
@@ -415,19 +506,16 @@
                     if (document.getElementById(`cell-${s.name}-${d}`).value !== '') return;
                     let st = state[s.name];
                     
-                    // --- 向後防呆 (看昨天) ---
                     if (st.consecWork >= 5) return;
                     if (st.yesterdayShift === 'N' && (shiftType === 'D' || shiftType === 'E')) return;
                     if (st.yesterdayShift === 'E' && shiftType === 'D') return;
                     
-                    // --- 向前防呆 (看明天) ---
-                    // 偷看明天的格子是否已經被預約了公假
                     let tomorrowShift = '';
                     if (d < daysInMonth) {
                         tomorrowShift = document.getElementById(`cell-${s.name}-${d+1}`).value;
                     }
-                    if (shiftType === 'N' && tomorrowShift === '公') return; // 不可 N 接公
-                    if (shiftType === 'E' && tomorrowShift === '公') return; // 不可 E 接公
+                    if (shiftType === 'N' && tomorrowShift === '公') return;
+                    if (shiftType === 'E' && tomorrowShift === '公') return;
                     
                     let score = 0;
                     if (s.targetShift === shiftType) score += 50; 
